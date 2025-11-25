@@ -1,28 +1,97 @@
 // "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=0&longitude=0"
 
-import { useState } from "react";
-
+import { useEffect, useState } from "react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import styles from "./Form.module.css";
 import Button from "./Button";
 import BackButton from "./BackButton";
+import { useUrlPosition } from "../hooks/useUrlPosition";
+import Message from "./Message";
+import Spinner from "./Spinner";
 
 export function convertToEmoji(countryCode) {
-  const codePoints = countryCode
+  if (!countryCode || typeof countryCode !== "string") return "";
+  // keep only letters and use first two characters (ISO Alpha-2 expected)
+  const iso = countryCode
     .toUpperCase()
-    .split("")
-    .map((char) => 127397 + char.charCodeAt());
+    .replace(/[^A-Z]/g, "")
+    .slice(0, 2);
+  if (!/^[A-Z]{2}$/.test(iso)) return "";
+  const codePoints = [...iso].map((char) => 127397 + char.charCodeAt(0));
   return String.fromCodePoint(...codePoints);
 }
 
 function Form() {
-  
+  const [lat, lng] = useUrlPosition();
+
+  // geocoding loading state (not shown but kept for future use)
+  const [isLoadingGeocoding, setIsLoadingGeocoding] = useState(false);
   const [cityName, setCityName] = useState("");
   const [country, setCountry] = useState(""); //use later
   const [date, setDate] = useState(new Date());
   const [notes, setNotes] = useState("");
 
+  const [emoji, setEmoji] = useState("");
+  const [geocodingError, setGeocodingError] = useState("");
+  const BASE_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client";
+
+  useEffect(
+    function () {
+      if (!lat || !lng) return;
+      async function fetchCityData() {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        try {
+          setIsLoadingGeocoding(true);
+          setGeocodingError("");
+          const res = await fetch(
+            `${BASE_URL}?latitude=${lat}&longitude=${lng}&localityLanguage=en`
+          );
+          const data = await res.json();
+          console.log(data);
+
+          if (!data.countryCode)
+            throw new Error(
+              "That does not seem to be a city, click somewhere else"
+            );
+
+          setCityName(data.city || data.locality || "");
+          setCountry(data.countryName || "");
+          if (data.countryCode) setEmoji(convertToEmoji(data.countryCode));
+        } catch (err) {
+          // keep existing values but log the error
+          setGeocodingError(err.message);
+        } finally {
+          setIsLoadingGeocoding(false);
+        }
+      }
+      fetchCityData();
+    },
+    [lat, lng]
+  );
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!cityName || !date) return;
+    const newCity ={
+      cityName,
+      country,
+      emoji,
+      date,
+      notes,
+      position: { lat, lng },
+    };
+    console.log(newCity);
+  }
+
+  if (isLoadingGeocoding) return <Spinner />;
+
+  if (!lat && !lng)
+    return <Message message="Click on the map to select a city location" />;
+  if (geocodingError) return <Message message={geocodingError} />;
+
   return (
-    <form className={styles.form}>
+    <form className={styles.form} onSubmit={handleSubmit}>
       <div className={styles.row}>
         <label htmlFor="cityName">City name</label>
         <input
@@ -30,15 +99,21 @@ function Form() {
           onChange={(e) => setCityName(e.target.value)}
           value={cityName}
         />
-        {/* <span className={styles.flag}>{emoji}</span> */}
+        <span className={styles.flag}>{emoji}</span>
       </div>
 
       <div className={styles.row}>
         <label htmlFor="date">When did you go to {cityName}?</label>
-        <input
+        {/* <input
           id="date"
           onChange={(e) => setDate(e.target.value)}
           value={date}
+        /> */}
+        <DatePicker
+          id="date"
+          onChange={(date) => setDate(date)}
+          selected={date}
+          dateFormat="dd/MM/yyyy"
         />
       </div>
 
@@ -53,7 +128,7 @@ function Form() {
 
       <div className={styles.buttons}>
         <Button type="primary">Add</Button>
-        <BackButton/>
+        <BackButton />
       </div>
     </form>
   );

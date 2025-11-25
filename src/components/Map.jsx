@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   MapContainer,
   TileLayer,
@@ -10,30 +9,39 @@ import {
 import styles from "./Map.module.css";
 import { useCities } from "../contexts/CitiesContext";
 import { useMap } from "react-leaflet";
-import { navigate } from "react-router-dom";
+import { useGeolocation } from "../hooks/useGeolocation.js";
+import { useUrlPosition } from "../hooks/useUrlPosition.js";
+import Button from "./Button.jsx";
 
 function Map() {
-  const { cities } = useCities();
-  const [mapPosition, setMapPosition] = useState([40, 0]);
+   const { cities } = useCities();
 
-  //   const [searchParams, setSearchParams] = useSearchParams();
+  const {
+    isLoading: isLoadingPosition,
+    position: geolocationPosition,
+    getPosition,
+  } = useGeolocation();
+ 
+  const [mapLat, mapLng] = useUrlPosition();
+  
 
-  const [searchParams] = useSearchParams();
-
-  const mapLat = searchParams.get("lat");
-  const mapLng = searchParams.get("lng");
-
-  useEffect(
-    function () {
-      if (mapLat && mapLng) setMapPosition([mapLat, mapLng]);
-    },
-    [mapLat, mapLng]
-  );
-
+  // derive center from query params when available, otherwise geolocation, otherwise default
+  const defaultPosition = [40, 0];
+  const center =
+    Number.isFinite(mapLat) && Number.isFinite(mapLng)
+      ? [mapLat, mapLng]
+      : Number.isFinite(geolocationPosition?.lat) &&
+        Number.isFinite(geolocationPosition?.lng)
+      ? [geolocationPosition.lat, geolocationPosition.lng]
+      : defaultPosition;
+  // avoid navigating on any container click (buttons inside would trigger it)
   return (
-    <div className={styles.mapContainer} onClick={() => navigate("form")}>
+    <div className={styles.mapContainer}>
+      {!geolocationPosition && (<Button type="position" onClick={getPosition}>
+        {isLoadingPosition ? "Loading..." : "Use your Position"}
+      </Button>)}
       <MapContainer
-        center={mapPosition}
+        center={center}
         zoom={10}
         scrollWheelZoom={true}
         className={styles.map}
@@ -52,7 +60,14 @@ function Map() {
             </Popup>
           </Marker>
         ))}
-        <ChangeCenter position={mapPosition} />
+        {Number.isFinite(mapLat) && Number.isFinite(mapLng) ? (
+          <ChangeCenter position={center} />
+        ) : Number.isFinite(geolocationPosition?.lat) &&
+          Number.isFinite(geolocationPosition?.lng) ? (
+          <ChangeCenter
+            position={[geolocationPosition.lat, geolocationPosition.lng]}
+          />
+        ) : null}
         <DetectClick />
       </MapContainer>
     </div>
